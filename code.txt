@@ -1,0 +1,4208 @@
+mes  codes de mon application : 
+1) models : 
+ // ============================================
+// models/cell_model.dart
+// ============================================
+
+class CellModel {
+  final int row;          // Position ligne (0-8)
+  final int col;          // Position colonne (0-8)
+  int value;              // Valeur actuelle (0-9, 0 = vide)
+  final int solution;     // Solution correcte
+  final bool isFixed;     // true = cellule pré-remplie, false = éditable
+  List<int> notes;        // Notes/annotations (1-9)
+  bool isError;          // true si erreur détectée
+  bool isHighlighted;     // true si on met en surbrillance (same number)
+  bool isSelected;        // true si la cellule est sélectionnée
+
+  CellModel({
+    required this.row,
+    required this.col,
+    required this.value,
+    required this.solution,
+    required this.isFixed,
+    this.notes = const [],
+    this.isError = false,
+    this.isHighlighted = false,
+    this.isSelected = false,
+  });
+
+  /// Vérifie si la cellule est vide
+  bool get isEmpty => value == 0;
+
+  /// Vérifie si la cellule est correcte
+  bool get isCorrect => value == solution;
+
+  /// Vérifie si la cellule peut être éditée
+  bool get isEditable => !isFixed;
+
+  /// Vérifie si la cellule a des notes
+  bool get hasNotes => notes.isNotEmpty;
+
+  /// Obtient le numéro du bloc 3x3 (0-8)
+  int get blockIndex => (row ~/ 3) * 3 + (col ~/ 3);
+
+  /// Obtient la ligne du bloc (0-2)
+  int get blockRow => row ~/ 3;
+
+  /// Obtient la colonne du bloc (0-2)
+  int get blockCol => col ~/ 3;
+
+  /// Crée une copie avec modifications
+  CellModel copyWith({
+    int? value,
+    List<int>? notes,
+    bool? isError,
+    bool? isHighlighted,
+    bool? isSelected,
+  }) {
+    return CellModel(
+      row: row,
+      col: col,
+      value: value ?? this.value,
+      solution: solution,
+      isFixed: isFixed,
+      notes: notes ?? List.from(this.notes),
+      isError: isError ?? this.isError,
+      isHighlighted: isHighlighted ?? this.isHighlighted,
+      isSelected: isSelected ?? this.isSelected,
+    );
+  }
+
+  /// Ajoute une note
+  CellModel addNote(int note) {
+    if (!notes.contains(note) && note >= 1 && note <= 9) {
+      List<int> newNotes = List.from(notes)..add(note);
+      newNotes.sort();
+      return copyWith(notes: newNotes);
+    }
+    return this;
+  }
+
+  /// Retire une note
+  CellModel removeNote(int note) {
+    if (notes.contains(note)) {
+      List<int> newNotes = List.from(notes)..remove(note);
+      return copyWith(notes: newNotes);
+    }
+    return this;
+  }
+
+  /// Bascule une note (ajoute si absente, retire si présente)
+  CellModel toggleNote(int note) {
+    if (notes.contains(note)) {
+      return removeNote(note);
+    } else {
+      return addNote(note);
+    }
+  }
+
+  /// Efface toutes les notes
+  CellModel clearNotes() {
+    return copyWith(notes: []);
+  }
+
+  /// Définit la valeur et efface les notes
+  CellModel setValue(int newValue) {
+    return copyWith(value: newValue, notes: []);
+  }
+
+  /// Efface la valeur (remet à 0)
+  CellModel clearValue() {
+    return copyWith(value: 0);
+  }
+
+  /// Marque comme erreur
+  CellModel markError() => copyWith(isError: true);
+
+  /// Efface l'erreur
+  CellModel clearError() => copyWith(isError: false);
+
+  /// Active/désactive le highlight (par ex. mêmes chiffres)
+  CellModel setHighlight(bool highlight) => copyWith(isHighlighted: highlight);
+
+  /// Sélectionne/désélectionne la cellule
+  CellModel setSelected(bool selected) => copyWith(isSelected: selected);
+
+  /// Convertit en JSON pour sauvegarde
+  Map<String, dynamic> toJson() {
+    return {
+      'row': row,
+      'col': col,
+      'value': value,
+      'solution': solution,
+      'isFixed': isFixed,
+      'notes': notes,
+      'isError': isError,
+      'isHighlighted': isHighlighted,
+      'isSelected': isSelected,
+    };
+  }
+
+  /// Crée depuis JSON
+  factory CellModel.fromJson(Map<String, dynamic> json) {
+    return CellModel(
+      row: json['row'],
+      col: json['col'],
+      value: json['value'],
+      solution: json['solution'],
+      isFixed: json['isFixed'],
+      notes: List<int>.from(json['notes'] ?? []),
+      isError: json['isError'] ?? false,
+      isHighlighted: json['isHighlighted'] ?? false,
+      isSelected: json['isSelected']  ?? false,
+    );
+  }
+
+  /// Crée une cellule vide
+  factory CellModel.empty(int row, int col, int solution) {
+    return CellModel(
+      row: row,
+      col: col,
+      value: 0,
+      solution: solution,
+      isFixed: false,
+    );
+  }
+
+  /// Crée une cellule fixe (pré-remplie)
+  factory CellModel.fixed(int row, int col, int value) {
+    return CellModel(
+      row: row,
+      col: col,
+      value: value,
+      solution: value,
+      isFixed: true,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'Cell($row,$col): value=$value, solution=$solution, fixed=$isFixed, notes=$notes';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is CellModel &&
+        other.row == row &&
+        other.col == col &&
+        other.value == value &&
+        other.solution == solution &&
+        other.isFixed == isFixed;
+  }
+
+  @override
+  int get hashCode {
+    return row.hashCode ^
+    col.hashCode ^
+    value.hashCode ^
+    solution.hashCode ^
+    isFixed.hashCode;
+  }
+}
+
+// Extensions utiles
+extension CellModelListExtension on List<List<CellModel>> {
+  /// Obtient une cellule à une position donnée
+  CellModel getCell(int row, int col) => this[row][col];
+
+  /// Définit une cellule à une position donnée
+  void setCell(int row, int col, CellModel cell) {
+    this[row][col] = cell;
+  }
+
+  /// Obtient toutes les cellules vides
+  List<CellModel> get emptyCells {
+    List<CellModel> cells = [];
+    for (var row in this) {
+      for (var cell in row) {
+        if (cell.isEmpty && !cell.isFixed) {
+          cells.add(cell);
+        }
+      }
+    }
+    return cells;
+  }
+
+  /// Obtient toutes les cellules fixes
+  List<CellModel> get fixedCells {
+    List<CellModel> cells = [];
+    for (var row in this) {
+      for (var cell in row) {
+        if (cell.isFixed) {
+          cells.add(cell);
+        }
+      }
+    }
+    return cells;
+  }
+
+  /// Obtient toutes les cellules avec erreurs
+  List<CellModel> get errorCells {
+    List<CellModel> cells = [];
+    for (var row in this) {
+      for (var cell in row) {
+        if (cell.isError) {
+          cells.add(cell);
+        }
+      }
+    }
+    return cells;
+  }
+
+  /// Compte le nombre de cellules remplies
+  int get filledCount {
+    int count = 0;
+    for (var row in this) {
+      for (var cell in row) {
+        if (!cell.isEmpty) count++;
+      }
+    }
+    return count;
+  }
+
+  /// Vérifie si la grille est complète
+  bool get isComplete {
+    for (var row in this) {
+      for (var cell in row) {
+        if (cell.isEmpty || !cell.isCorrect) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+}
+// ============================================
+// models/game_state.dart
+// ============================================
+
+import 'cell_model.dart';
+
+enum Difficulty { facile, moyen, difficile }
+
+class GameState {
+  final List<List<CellModel>> grid;
+  final Difficulty difficulty;
+  final int errors;
+  final int elapsedSeconds;
+  final bool isNotesMode;
+  final int? selectedRow;
+  final int? selectedCol;
+  final DateTime startTime;
+  final int score;
+
+  GameState({
+    required this.grid,
+    required this.difficulty,
+    this.errors = 0,
+    this.elapsedSeconds = 0,
+    this.isNotesMode = false,
+    this.selectedRow,
+    this.selectedCol,
+    DateTime? startTime,
+    this.score = 0,
+  }) : startTime = startTime ?? DateTime.now();
+
+  // Vérifie si le jeu est terminé (3 erreurs ou grille complète)
+  bool get isGameOver => errors >= 3 || isComplete;
+
+  // Vérifie si la grille est complètement remplie et correcte
+  bool get isComplete {
+    for (var row in grid) {
+      for (var cell in row) {
+        if (cell.value == 0 || cell.value != cell.solution) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // Compte le nombre de cellules remplies
+  int get filledCellsCount {
+    int count = 0;
+    for (var row in grid) {
+      for (var cell in row) {
+        if (cell.value != 0) count++;
+      }
+    }
+    return count;
+  }
+
+  // Compte le nombre de cellules vides
+  int get emptyCellsCount => 81 - filledCellsCount;
+
+  // Compte combien de fois un numéro est utilisé
+  int countNumber(int number) {
+    int count = 0;
+    for (var row in grid) {
+      for (var cell in row) {
+        if (cell.value == number) count++;
+      }
+    }
+    return count;
+  }
+
+  // Vérifie si un numéro est complet (utilisé 9 fois)
+  bool isNumberComplete(int number) {
+    return countNumber(number) == 9;
+  }
+
+  // Crée une copie de l'état avec des modifications
+  GameState copyWith({
+    List<List<CellModel>>? grid,
+    Difficulty? difficulty,
+    int? errors,
+    int? elapsedSeconds,
+    bool? isNotesMode,
+    int? selectedRow,
+    int? selectedCol,
+    DateTime? startTime,
+    int? score,
+    bool clearSelection = false,
+  }) {
+    return GameState(
+      grid: grid ?? this.grid.map((row) => row.map((cell) => cell).toList()).toList(),
+      difficulty: difficulty ?? this.difficulty,
+      errors: errors ?? this.errors,
+      elapsedSeconds: elapsedSeconds ?? this.elapsedSeconds,
+      isNotesMode: isNotesMode ?? this.isNotesMode,
+      selectedRow: clearSelection ? null : (selectedRow ?? this.selectedRow),
+      selectedCol: clearSelection ? null : (selectedCol ?? this.selectedCol),
+      startTime: startTime ?? this.startTime,
+      score: score ?? this.score,
+    );
+  }
+
+  // Convertit l'état en JSON pour la sauvegarde
+  Map<String, dynamic> toJson() {
+    return {
+      'grid': grid.map((row) => row.map((cell) => cell.toJson()).toList()).toList(),
+      'difficulty': difficulty.index,
+      'errors': errors,
+      'elapsedSeconds': elapsedSeconds,
+      'isNotesMode': isNotesMode,
+      'selectedRow': selectedRow,
+      'selectedCol': selectedCol,
+      'startTime': startTime.toIso8601String(),
+      'score': score,
+    };
+  }
+
+  // Crée un état depuis JSON
+  factory GameState.fromJson(Map<String, dynamic> json) {
+    return GameState(
+      grid: (json['grid'] as List)
+          .map((row) => (row as List)
+          .map((cell) => CellModel.fromJson(cell))
+          .toList())
+          .toList(),
+      difficulty: Difficulty.values[json['difficulty']],
+      errors: json['errors'] ?? 0,
+      elapsedSeconds: json['elapsedSeconds'] ?? 0,
+      isNotesMode: json['isNotesMode'] ?? false,
+      selectedRow: json['selectedRow'],
+      selectedCol: json['selectedCol'],
+      startTime: DateTime.parse(json['startTime']),
+      score: json['score'] ?? 0,
+    );
+  }
+
+  // Obtient le nom de la difficulté
+  String get difficultyName {
+    switch (difficulty) {
+      case Difficulty.facile:
+        return 'Facile';
+      case Difficulty.moyen:
+        return 'Moyen';
+      case Difficulty.difficile:
+        return 'Difficile';
+    }
+  }
+
+  // Réinitialise la grille (efface toutes les valeurs non fixes)
+  GameState resetGrid() {
+    List<List<CellModel>> newGrid = grid.map((row) {
+      return row.map((cell) {
+        if (cell.isFixed) {
+          return cell;
+        } else {
+          return cell.copyWith(value: 0, notes: [], isError: false);
+        }
+      }).toList();
+    }).toList();
+
+    return copyWith(
+      grid: newGrid,
+      errors: 0,
+      elapsedSeconds: 0,
+      startTime: DateTime.now(),
+      clearSelection: true,
+    );
+  }
+
+  // Obtient toutes les cellules vides
+  List<CellModel> get emptyCells {
+    List<CellModel> cells = [];
+    for (var row in grid) {
+      for (var cell in row) {
+        if (cell.value == 0 && !cell.isFixed) {
+          cells.add(cell);
+        }
+      }
+    }
+    return cells;
+  }
+
+  // Obtient toutes les cellules avec erreurs
+  List<CellModel> get errorCells {
+    List<CellModel> cells = [];
+    for (var row in grid) {
+      for (var cell in row) {
+        if (cell.isError) {
+          cells.add(cell);
+        }
+      }
+    }
+    return cells;
+  }
+
+  @override
+  String toString() {
+    return 'GameState(difficulty: $difficultyName, errors: $errors, time: $elapsedSeconds, filled: $filledCellsCount/81)';
+  }
+}
+
+// Extensions utiles pour Difficulty
+extension DifficultyExtension on Difficulty {
+  String get displayName {
+    switch (this) {
+      case Difficulty.facile:
+        return 'Facile';
+      case Difficulty.moyen:
+        return 'Moyen';
+      case Difficulty.difficile:
+        return 'Difficile';
+    }
+  }
+
+  int get minCellsToRemove {
+    switch (this) {
+      case Difficulty.facile:
+        return 35;
+      case Difficulty.moyen:
+        return 45;
+      case Difficulty.difficile:
+        return 52;
+    }
+  }
+
+  int get maxCellsToRemove {
+    switch (this) {
+      case Difficulty.facile:
+        return 40;
+      case Difficulty.moyen:
+        return 50;
+      case Difficulty.difficile:
+        return 57;
+    }
+  }
+
+  int get baseScore {
+    switch (this) {
+      case Difficulty.facile:
+        return 1000;
+      case Difficulty.moyen:
+        return 2500;
+      case Difficulty.difficile:
+        return 5000;
+    }
+  }
+}
+// ============================================
+// models/statistics.dart
+// ============================================
+
+class Statistics {
+  final int gamesPlayed;
+  final int gamesWon;
+  final int gamesLost;
+  final int totalTime; // en secondes
+  final int bestTimeFacile;
+  final int bestTimeMoyen;
+  final int bestTimeDifficile;
+  final int bestScoreFacile;
+  final int bestScoreMoyen;
+  final int bestScoreDifficile;
+  final int currentStreak;
+  final int bestStreak;
+
+  Statistics({
+    this.gamesPlayed = 0,
+    this.gamesWon = 0,
+    this.gamesLost = 0,
+    this.totalTime = 0,
+    this.bestTimeFacile = 0,
+    this.bestTimeMoyen = 0,
+    this.bestTimeDifficile = 0,
+    this.bestScoreFacile = 0,
+    this.bestScoreMoyen = 0,
+    this.bestScoreDifficile = 0,
+    this.currentStreak = 0,
+    this.bestStreak = 0,
+  });
+
+  double get winRate {
+    if (gamesPlayed == 0) return 0.0;
+    return (gamesWon / gamesPlayed) * 100;
+  }
+
+  int get averageTime {
+    if (gamesWon == 0) return 0;
+    return totalTime ~/ gamesWon;
+  }
+
+  Statistics copyWith({
+    int? gamesPlayed,
+    int? gamesWon,
+    int? gamesLost,
+    int? totalTime,
+    int? bestTimeFacile,
+    int? bestTimeMoyen,
+    int? bestTimeDifficile,
+    int? bestScoreFacile,
+    int? bestScoreMoyen,
+    int? bestScoreDifficile,
+    int? currentStreak,
+    int? bestStreak,
+  }) {
+    return Statistics(
+      gamesPlayed: gamesPlayed ?? this.gamesPlayed,
+      gamesWon: gamesWon ?? this.gamesWon,
+      gamesLost: gamesLost ?? this.gamesLost,
+      totalTime: totalTime ?? this.totalTime,
+      bestTimeFacile: bestTimeFacile ?? this.bestTimeFacile,
+      bestTimeMoyen: bestTimeMoyen ?? this.bestTimeMoyen,
+      bestTimeDifficile: bestTimeDifficile ?? this.bestTimeDifficile,
+      bestScoreFacile: bestScoreFacile ?? this.bestScoreFacile,
+      bestScoreMoyen: bestScoreMoyen ?? this.bestScoreMoyen,
+      bestScoreDifficile: bestScoreDifficile ?? this.bestScoreDifficile,
+      currentStreak: currentStreak ?? this.currentStreak,
+      bestStreak: bestStreak ?? this.bestStreak,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'gamesPlayed': gamesPlayed,
+      'gamesWon': gamesWon,
+      'gamesLost': gamesLost,
+      'totalTime': totalTime,
+      'bestTimeFacile': bestTimeFacile,
+      'bestTimeMoyen': bestTimeMoyen,
+      'bestTimeDifficile': bestTimeDifficile,
+      'bestScoreFacile': bestScoreFacile,
+      'bestScoreMoyen': bestScoreMoyen,
+      'bestScoreDifficile': bestScoreDifficile,
+      'currentStreak': currentStreak,
+      'bestStreak': bestStreak,
+    };
+  }
+
+  factory Statistics.fromJson(Map<String, dynamic> json) {
+    return Statistics(
+      gamesPlayed: json['gamesPlayed'] ?? 0,
+      gamesWon: json['gamesWon'] ?? 0,
+      gamesLost: json['gamesLost'] ?? 0,
+      totalTime: json['totalTime'] ?? 0,
+      bestTimeFacile: json['bestTimeFacile'] ?? 0,
+      bestTimeMoyen: json['bestTimeMoyen'] ?? 0,
+      bestTimeDifficile: json['bestTimeDifficile'] ?? 0,
+      bestScoreFacile: json['bestScoreFacile'] ?? 0,
+      bestScoreMoyen: json['bestScoreMoyen'] ?? 0,
+      bestScoreDifficile: json['bestScoreDifficile'] ?? 0,
+      currentStreak: json['currentStreak'] ?? 0,
+      bestStreak: json['bestStreak'] ?? 0,
+    );
+  }
+}
+2) providers :  // ============================================
+// providers/game_provider.dart
+// ============================================
+import 'package:flutter/foundation.dart';
+import '../models/game_state.dart';
+import '../models/cell_model.dart';
+import '../models/statistics.dart';
+import '../services/sudoku_generator.dart';
+import '../services/storage_service.dart';
+import '../services/sudoku_solver.dart';
+
+class GameProvider extends ChangeNotifier {
+  GameState? _gameState;
+  Statistics _statistics = Statistics();
+  final List<GameState> _undoStack = [];
+
+  int? highlightNumber;
+
+  GameState? get gameState => _gameState;
+  Statistics get statistics => _statistics;
+  bool get canUndo => _undoStack.isNotEmpty;
+
+  GameProvider() {
+    _loadStatistics();
+  }
+
+  // Charger les statistiques
+  Future<void> _loadStatistics() async {
+    final stats = await StorageService.loadStatistics();
+    if (stats != null) {
+      _statistics = stats;
+      notifyListeners();
+    }
+  }
+
+  // Sauvegarder les statistiques
+  Future<void> _saveStatistics() async {
+    await StorageService.saveStatistics(_statistics);
+  }
+
+  // =============================
+  //  DÉMARRER UNE NOUVELLE PARTIE
+  // =============================
+  void startNewGame(Difficulty difficulty) {
+    _gameState = SudokuGenerator.generatePuzzle(difficulty);
+    _undoStack.clear();
+    highlightNumber = null;
+    notifyListeners();
+    _saveGame();
+  }
+
+  // Charger une partie sauvegardée
+  Future<void> loadSavedGame() async {
+    final savedGame = await StorageService.loadGame();
+    if (savedGame != null) {
+      _gameState = savedGame;
+      _undoStack.clear();
+      highlightNumber = null;
+      notifyListeners();
+    }
+  }
+
+  // Sauvegarder la partie actuelle
+  Future<void> _saveGame() async {
+    if (_gameState != null) {
+      await StorageService.saveGame(_gameState!);
+    }
+  }
+
+  // =============================
+  //  SÉLECTIONNER UNE CELLULE
+  // =============================
+  void selectCell(int row, int col) {
+    if (_gameState == null) return;
+
+    // Décocher toutes les cellules
+    List<List<CellModel>> newGrid = _gameState!.grid.map((r) {
+      return r.map((c) => c.copyWith(isHighlighted: false)).toList();
+    }).toList();
+
+    // Surligner la cellule sélectionnée
+    newGrid[row][col] = newGrid[row][col].copyWith(isHighlighted: true);
+
+    // Mettre à jour l’état
+    _gameState = _gameState!.copyWith(
+      selectedRow: row,
+      selectedCol: col,
+      grid: newGrid,
+    );
+
+    // Highlight de toutes les cellules avec la même valeur
+    int value = newGrid[row][col].value;
+    highlightNumber = value != 0 ? value : null;
+
+    if (highlightNumber != null) {
+      newGrid = newGrid.map((r) {
+        return r.map((c) {
+          return c.value == highlightNumber ? c.copyWith(isHighlighted: true) : c;
+        }).toList();
+      }).toList();
+
+      _gameState = _gameState!.copyWith(grid: newGrid);
+    }
+
+    notifyListeners();
+  }
+
+  // =============================
+  //  ENTRER UN NUMÉRO
+  // =============================
+  void enterNumber(int number) {
+    if (_gameState == null ||
+        _gameState!.selectedRow == null ||
+        _gameState!.selectedCol == null) return;
+
+    final row = _gameState!.selectedRow!;
+    final col = _gameState!.selectedCol!;
+    final cell = _gameState!.grid[row][col];
+
+    if (cell.isFixed) return;
+
+    // Sauvegarder ancien état (Undo)
+    _undoStack.add(_cloneGameState(_gameState!));
+    if (_undoStack.length > 20) _undoStack.removeAt(0);
+
+    List<CellModel> newRow = _gameState!.grid[row].map((c) => c).toList();
+
+    if (_gameState!.isNotesMode) {
+      List<int> newNotes = List.from(cell.notes);
+      if (newNotes.contains(number)) {
+        newNotes.remove(number);
+      } else {
+        newNotes.add(number);
+        newNotes.sort();
+      }
+      newRow[col] = cell.copyWith(notes: newNotes, value: 0, isError: false);
+    } else {
+      int newValue = cell.value == number ? 0 : number;
+      bool isError = false;
+      int newErrors = _gameState!.errors;
+
+      if (newValue != 0 && newValue != cell.solution) {
+        isError = true;
+        newErrors++;
+      }
+
+      newRow[col] = cell.copyWith(value: newValue, notes: [], isError: isError);
+
+      _gameState = _gameState!.copyWith(
+        errors: newErrors,
+        grid: List.from(_gameState!.grid)..[row] = newRow,
+      );
+
+      if (newErrors >= 3) {
+        _endGame(false);
+        return;
+      }
+    }
+
+    // Appliquer la ligne modifiée
+    _gameState = _gameState!.copyWith(
+      grid: List.from(_gameState!.grid)..[row] = newRow,
+    );
+
+    if (_gameState!.isComplete) {
+      _endGame(true);
+    } else {
+      notifyListeners();
+      _saveGame();
+    }
+  }
+
+  // =============================
+  //  EFFACER UNE CELLULE
+  // =============================
+  void eraseCell() {
+    if (_gameState == null ||
+        _gameState!.selectedRow == null ||
+        _gameState!.selectedCol == null) return;
+
+    final row = _gameState!.selectedRow!;
+    final col = _gameState!.selectedCol!;
+    final cell = _gameState!.grid[row][col];
+
+    if (cell.isFixed) return;
+
+    _undoStack.add(_cloneGameState(_gameState!));
+    if (_undoStack.length > 20) _undoStack.removeAt(0);
+
+    List<List<CellModel>> newGrid = _gameState!.grid
+        .map((r) => r.map((c) => c).toList())
+        .toList();
+
+    newGrid[row][col] = cell.copyWith(value: 0, notes: [], isError: false);
+    _gameState = _gameState!.copyWith(grid: newGrid);
+
+    notifyListeners();
+    _saveGame();
+  }
+
+  // =============================
+  //       ANNULER (Undo)
+  // =============================
+  void undo() {
+    if (_undoStack.isEmpty) return;
+
+    _gameState = _undoStack.removeLast();
+    notifyListeners();
+    _saveGame();
+  }
+
+  // Basculer mode notes
+  void toggleNotesMode() {
+    if (_gameState == null) return;
+
+    _gameState = _gameState!.copyWith(isNotesMode: !_gameState!.isNotesMode);
+    notifyListeners();
+  }
+
+  // Vérifier la grille
+  List<String> checkGrid() {
+    if (_gameState == null) return [];
+
+    List<List<CellModel>> checkedGrid = SudokuSolver.checkGrid(_gameState!.grid);
+    _gameState = _gameState!.copyWith(grid: checkedGrid);
+
+    List<String> errors = [];
+    for (var row in _gameState!.grid) {
+      for (var cell in row) {
+        if (cell.isError) {
+          errors.add('Cellule [${cell.row + 1},${cell.col + 1}]');
+        }
+      }
+    }
+
+    notifyListeners();
+    return errors;
+  }
+
+  // Temps écoulé
+  void updateTime(int seconds) {
+    if (_gameState == null) return;
+
+    _gameState = _gameState!.copyWith(elapsedSeconds: seconds);
+    notifyListeners();
+  }
+
+  // =============================
+  //   FIN DE PARTIE
+  // =============================
+  void _endGame(bool won) {
+    if (_gameState == null) return;
+
+    if (won) {
+      _statistics = _statistics.copyWith(
+        gamesPlayed: _statistics.gamesPlayed + 1,
+        gamesWon: _statistics.gamesWon + 1,
+        totalTime: _statistics.totalTime + _gameState!.elapsedSeconds,
+        currentStreak: _statistics.currentStreak + 1,
+        bestStreak: (_statistics.currentStreak + 1 > _statistics.bestStreak)
+            ? _statistics.currentStreak + 1
+            : _statistics.bestStreak,
+      );
+
+      final score = SudokuGenerator.calculateScore(
+        _gameState!.difficulty,
+        _gameState!.elapsedSeconds,
+      );
+
+      switch (_gameState!.difficulty) {
+        case Difficulty.facile:
+          if (_statistics.bestTimeFacile == 0 ||
+              _gameState!.elapsedSeconds < _statistics.bestTimeFacile) {
+            _statistics =
+                _statistics.copyWith(bestTimeFacile: _gameState!.elapsedSeconds);
+          }
+          if (score > _statistics.bestScoreFacile) {
+            _statistics = _statistics.copyWith(bestScoreFacile: score);
+          }
+          break;
+        case Difficulty.moyen:
+          if (_statistics.bestTimeMoyen == 0 ||
+              _gameState!.elapsedSeconds < _statistics.bestTimeMoyen) {
+            _statistics =
+                _statistics.copyWith(bestTimeMoyen: _gameState!.elapsedSeconds);
+          }
+          if (score > _statistics.bestScoreMoyen) {
+            _statistics = _statistics.copyWith(bestScoreMoyen: score);
+          }
+          break;
+        case Difficulty.difficile:
+          if (_statistics.bestTimeDifficile == 0 ||
+              _gameState!.elapsedSeconds < _statistics.bestTimeDifficile) {
+            _statistics = _statistics.copyWith(
+                bestTimeDifficile: _gameState!.elapsedSeconds);
+          }
+          if (score > _statistics.bestScoreDifficile) {
+            _statistics = _statistics.copyWith(bestScoreDifficile: score);
+          }
+          break;
+      }
+    } else {
+      _statistics = _statistics.copyWith(
+        gamesPlayed: _statistics.gamesPlayed + 1,
+        gamesLost: _statistics.gamesLost + 1,
+        currentStreak: 0,
+      );
+    }
+
+    _saveStatistics();
+    StorageService.clearSavedGame();
+    notifyListeners();
+  }
+
+  // Réinitialiser statistiques
+  void resetStatistics() {
+    _statistics = Statistics();
+    _saveStatistics();
+    notifyListeners();
+  }
+
+  // =============================
+  //   CLONE PROFOND POUR UNDO
+  // =============================
+  GameState _cloneGameState(GameState state) {
+    return state.copyWith(
+      grid: state.grid
+          .map((r) => r.map((c) => c.copyWith()).toList())
+          .toList(),
+    );
+  }
+}
+// ============================================
+// providers/settings_provider.dart
+// ============================================
+
+import 'package:flutter/foundation.dart';
+import '../services/storage_service.dart';
+
+class SettingsProvider extends ChangeNotifier {
+  bool _autoCheckErrors = true;
+  bool _highlightSimilar = true;
+  bool _showTimer = true;
+  bool _soundEnabled = false;
+  bool _vibrateEnabled = true;
+  bool _isDarkMode = false;
+
+  // ======== GETTERS ========
+  bool get autoCheckErrors => _autoCheckErrors;
+  bool get highlightSimilar => _highlightSimilar;
+  bool get showTimer => _showTimer;
+  bool get soundEnabled => _soundEnabled;
+  bool get vibrateEnabled => _vibrateEnabled;
+  bool get isDarkMode => _isDarkMode;
+
+  SettingsProvider() {
+    _loadSettings();
+  }
+
+  // ======== CHARGER LES PARAMÈTRES ========
+  Future<void> _loadSettings() async {
+    final settings = await StorageService.loadSettings();
+    if (settings != null) {
+      _autoCheckErrors = settings['autoCheckErrors'] ?? true;
+      _highlightSimilar = settings['highlightSimilar'] ?? true;
+      _showTimer = settings['showTimer'] ?? true;
+      _soundEnabled = settings['soundEnabled'] ?? false;
+      _vibrateEnabled = settings['vibrateEnabled'] ?? true;
+      _isDarkMode = settings['isDarkMode'] ?? false;
+      notifyListeners();
+    }
+  }
+
+  // ======== SAUVEGARDER LES PARAMÈTRES ========
+  Future<void> _saveSettings() async {
+    await StorageService.saveSettings({
+      'autoCheckErrors': _autoCheckErrors,
+      'highlightSimilar': _highlightSimilar,
+      'showTimer': _showTimer,
+      'soundEnabled': _soundEnabled,
+      'vibrateEnabled': _vibrateEnabled,
+      'isDarkMode': _isDarkMode,
+    });
+  }
+
+  // ======== SETTERS ========
+  void setAutoCheckErrors(bool value) => _updateSetting(() => _autoCheckErrors = value);
+  void setHighlightSimilar(bool value) => _updateSetting(() => _highlightSimilar = value);
+  void setShowTimer(bool value) => _updateSetting(() => _showTimer = value);
+  void setSoundEnabled(bool value) => _updateSetting(() => _soundEnabled = value);
+  void setVibrateEnabled(bool value) => _updateSetting(() => _vibrateEnabled = value);
+  void setDarkMode(bool value) => _updateSetting(() => _isDarkMode = value);
+
+  // Méthode interne pour notifier et sauvegarder
+  void _updateSetting(VoidCallback update) {
+    update();
+    notifyListeners();
+    _saveSettings();
+  }
+}
+import 'package:flutter/foundation.dart';
+import '../services/storage_service.dart';
+
+class UserProvider extends ChangeNotifier {
+  String _username = '';
+  String _avatar = '😀';
+  String _country = 'Maroc';
+  int _level = 0;
+  bool _isLoggedIn = false;
+  DateTime? _createdAt;
+
+  bool _loaded = false; // 🔥 empêche les notifications multiples au démarrage
+
+  // ======== GETTERS ========
+  String get username => _username;
+  String get avatar => _avatar;
+  String get country => _country;
+  int get level => _level;
+  bool get isLoggedIn => _isLoggedIn;
+  DateTime? get createdAt => _createdAt;
+
+  int get daysSinceCreation {
+    if (_createdAt == null) return 0;
+    return DateTime.now().difference(_createdAt!).inDays;
+  }
+
+  String get welcomeMessage {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Bonjour, $_username !';
+    if (hour < 18) return 'Bon après-midi, $_username !';
+    return 'Bonsoir, $_username !';
+  }
+
+  UserProvider() {
+    _initialize();
+  }
+
+  // ======== INITIALISATION ========
+  Future<void> _initialize() async {
+    if (_loaded) return;
+    _loaded = true;
+
+    final userData = await StorageService.loadUserProfile();
+    if (userData != null) {
+      _username = userData['username'] ?? '';
+      _avatar = userData['avatar'] ?? '😀';
+      _country = userData['country'] ?? 'Maroc';
+      _level = userData['level'] ?? 0;
+      _isLoggedIn = userData['isLoggedIn'] ?? false;
+
+      final created = userData['createdAt'];
+      if (created is String) {
+        _createdAt = DateTime.tryParse(created);
+      }
+
+      notifyListeners();
+    }
+  }
+
+  // ======== MÉTHODE INTERNES ========
+  Future<void> _saveUser() async {
+    await StorageService.saveUserProfile({
+      'username': _username,
+      'avatar': _avatar,
+      'country': _country,
+      'level': _level,
+      'isLoggedIn': _isLoggedIn,
+      'createdAt': _createdAt?.toIso8601String(),
+    });
+  }
+
+  // ======== ACTIONS UTILISATEUR ========
+  Future<void> createProfile(String username) async {
+    _username = username;
+    _isLoggedIn = true;
+    _createdAt = DateTime.now();
+    _level = 1;
+
+    await _saveUser();
+    notifyListeners();
+  }
+
+  Future<void> updateProfile(String username) async {
+    _username = username;
+    await _saveUser();
+    notifyListeners();
+  }
+
+  void selectAvatar(String emoji) {
+    _avatar = emoji;
+    _saveUser();
+    notifyListeners();
+  }
+
+  Future<void> updateCountry(String country) async {
+    _country = country;
+    await _saveUser();
+    notifyListeners();
+  }
+
+  Future<void> increaseLevel() async {
+    _level++;
+    await _saveUser();
+    notifyListeners();
+  }
+
+  Future<void> logout() async {
+    _username = '';
+    _avatar = '😀';
+    _level = 0;
+    _isLoggedIn = false;
+    _createdAt = null;
+
+    await StorageService.clearUserProfile();
+    notifyListeners();
+  }
+}
+3) screens : 
+// ============================================
+// screens/daily_challenges_screen.dart
+// ============================================
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/game_provider.dart';
+import '../models/game_state.dart';
+import '../utils/constants.dart';
+import 'game_screen.dart';
+
+class DailyChallengesScreen extends StatefulWidget {
+  const DailyChallengesScreen({Key? key}) : super(key: key);
+
+  @override
+  State<DailyChallengesScreen> createState() => _DailyChallengesScreenState();
+}
+
+class _DailyChallengesScreenState extends State<DailyChallengesScreen> {
+  DateTime _currentMonth = DateTime.now();
+  int _selectedDay = DateTime.now().day;
+
+  // Simuler les défis complétés (à remplacer par vraies données)
+  Set<int> _completedDays = {28, 29}; // Exemple : jours 28 et 29 complétés
+
+  late final List<int> _daysInCalendar;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateCalendarDays();
+  }
+
+  void _updateCalendarDays() {
+    final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
+    final firstDayOfWeek = DateTime(_currentMonth.year, _currentMonth.month, 1).weekday;
+
+    _daysInCalendar = List.generate(42, (index) {
+      final dayNumber = index - firstDayOfWeek + 2;
+      if (dayNumber < 1 || dayNumber > daysInMonth) return 0;
+      return dayNumber;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF2979FF), Color(0xFF1565C0)],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(),
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      _buildCalendar(),
+                      const SizedBox(height: 24),
+                      _buildPlayButton(),
+                    ],
+                  ),
+                ),
+              ),
+              _buildBottomNavigation(context),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: const [
+                TrophyRays(),
+                Icon(
+                  Icons.emoji_events,
+                  size: 80,
+                  color: Color(0xFFFFB300),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: _previousMonth,
+                icon: const Icon(Icons.chevron_left, color: Colors.white, size: 32),
+              ),
+              Text(
+                '${_getMonthName(_currentMonth.month)} ${_currentMonth.year}',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              IconButton(
+                onPressed: _nextMonth,
+                icon: const Icon(Icons.chevron_right, color: Colors.white, size: 32),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalendar() {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: ['L', 'M', 'M', 'J', 'V', 'S', 'D']
+              .map((day) => SizedBox(
+            width: 40,
+            child: Center(
+              child: Text(
+                day,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+          ))
+              .toList(),
+        ),
+        const SizedBox(height: 12),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+          ),
+          itemCount: _daysInCalendar.length,
+          itemBuilder: (context, index) {
+            final dayNumber = _daysInCalendar[index];
+            if (dayNumber == 0) return const SizedBox();
+
+            final isToday = dayNumber == DateTime.now().day &&
+                _currentMonth.month == DateTime.now().month &&
+                _currentMonth.year == DateTime.now().year;
+            final isCompleted = _completedDays.contains(dayNumber);
+            final isSelected = dayNumber == _selectedDay;
+
+            return _buildDayCell(dayNumber, isToday, isCompleted, isSelected);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDayCell(int day, bool isToday, bool isCompleted, bool isSelected) {
+    final backgroundColor = isToday
+        ? AppConstants.primaryColor
+        : isSelected
+        ? AppConstants.primaryColor.withOpacity(0.2)
+        : Colors.white;
+
+    final textColor = isToday ? Colors.white : const Color(0xFF424242);
+
+    final overlay = isCompleted ? const Positioned(top: 2, right: 2, child: _StarOverlay()) : null;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedDay = day;
+        });
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(8),
+          border: isSelected ? Border.all(color: AppConstants.primaryColor, width: 2) : null,
+        ),
+        child: Stack(
+          children: [
+            Center(
+              child: Text(
+                '$day',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                  color: textColor,
+                ),
+              ),
+            ),
+            if (overlay != null) overlay,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlayButton() {
+    final isToday = _selectedDay == DateTime.now().day &&
+        _currentMonth.month == DateTime.now().month &&
+        _currentMonth.year == DateTime.now().year;
+
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        onPressed: isToday ? _playDailyChallenge : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppConstants.primaryColor,
+          disabledBackgroundColor: Colors.grey.shade300,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
+        ),
+        child: Text(
+          isToday ? 'Jouer' : 'Disponible le $_selectedDay ${_getMonthName(_currentMonth.month)}',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: isToday ? Colors.white : Colors.grey.shade600,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigation(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildNavItem(Icons.home, 'Principal', false, () {
+            Navigator.pop(context);
+          }),
+          _buildNavItem(Icons.calendar_today, 'Défi quotidien', true, null),
+          _buildNavItem(Icons.person, 'Moi', false, () {
+            Navigator.pushNamed(context, '/profile');
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(IconData icon, String label, bool isActive, VoidCallback? onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: isActive ? Colors.white : Colors.white60, size: 28),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(color: isActive ? Colors.white : Colors.white60, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _previousMonth() {
+    setState(() {
+      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
+      _selectedDay = 1;
+      _updateCalendarDays();
+    });
+  }
+
+  void _nextMonth() {
+    setState(() {
+      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
+      _selectedDay = 1;
+      _updateCalendarDays();
+    });
+  }
+
+  void _playDailyChallenge() {
+    final gameProvider = Provider.of<GameProvider>(context, listen: false);
+    gameProvider.startNewGame(Difficulty.moyen); // Défi quotidien en difficulté moyenne
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GameScreen(
+          gameState: gameProvider.gameState!,
+          isDailyChallenge: true,
+        ),
+      ),
+    ).then((_) {
+      setState(() {
+        _completedDays.add(_selectedDay);
+      });
+    });
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      '', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+    ];
+    return months[month];
+  }
+}
+
+// =====================
+// Widgets constants
+// =====================
+class TrophyRays extends StatelessWidget {
+  const TrophyRays({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: List.generate(8, (index) {
+        return Transform.rotate(
+          angle: (index * 3.14159) / 4,
+          child: Container(
+            width: 80,
+            height: 4,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white.withOpacity(0.3),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _StarOverlay extends StatelessWidget {
+  const _StarOverlay({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: const BoxDecoration(
+        color: Color(0xFFFFB300),
+        shape: BoxShape.circle,
+      ),
+      child: const Icon(
+        Icons.star,
+        size: 14,
+        color: Colors.white,
+      ),
+    );
+  }
+}
+// ============================================
+// screens/game_screen.dart
+// ============================================
+import 'dart:async';
+import 'package:flutter/material.dart';
+import '../models/game_state.dart';
+import '../models/cell_model.dart';
+import '../services/sudoku_solver.dart';
+import '../services/storage_service.dart';
+import '../services/sudoku_generator.dart';
+import 'result_screen.dart';
+
+class GameScreen extends StatefulWidget {
+  final GameState gameState;
+  final bool isDailyChallenge;
+
+  const GameScreen({Key? key, required this.gameState , this.isDailyChallenge = false,}) : super(key: key);
+
+  @override
+  State<GameScreen> createState() => _GameScreenState();
+}
+
+class _GameScreenState extends State<GameScreen> {
+  late GameState _gameState;
+  Timer? _timer;
+  int? highlightedNumber; // pour gérer le highlight des chiffres fixes
+
+  @override
+  void initState() {
+    super.initState();
+    _gameState = widget.gameState;
+    _startTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!_gameState.isGameOver) {
+        setState(() {
+          _gameState = _gameState.copyWith(
+            elapsedSeconds: _gameState.elapsedSeconds + 1,
+          );
+        });
+        StorageService.saveGame(_gameState);
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  void _onCellTap(int row, int col) {
+    if (_gameState.grid[row][col].isFixed) return;
+
+    setState(() {
+      _gameState = _gameState.copyWith(
+        selectedRow: row,
+        selectedCol: col,
+      );
+      highlightedNumber = null; // effacer highlight lors de sélection d'une cellule
+    });
+  }
+
+  void highlightNumber(int number) {
+    setState(() {
+      _gameState = _gameState.copyWith(
+        grid: _gameState.grid.map((row) {
+          return row.map((cell) {
+            if (cell.value == number && cell.isFixed) {
+              return cell.copyWith(isHighlighted: true);
+            } else {
+              return cell.copyWith(isHighlighted: false);
+            }
+          }).toList();
+        }).toList(),
+      );
+    });
+  }
+
+  void _onNumberTap(int number) {
+    if (_gameState.selectedRow == null || _gameState.selectedCol == null) return;
+
+    final row = _gameState.selectedRow!;
+    final col = _gameState.selectedCol!;
+    final cell = _gameState.grid[row][col];
+
+    if (cell.isFixed) {
+      // Si l'utilisateur clique sur un numéro fixe, on highlight tous les chiffres fixes identiques
+      setState(() {
+        highlightedNumber = cell.value;
+      });
+      return;
+    }
+
+    setState(() {
+      List<List<CellModel>> newGrid = _gameState.grid
+          .map((r) => r.map((c) => c).toList())
+          .toList();
+
+      if (_gameState.isNotesMode) {
+        // Mode notes
+        List<int> newNotes = List.from(cell.notes);
+        if (newNotes.contains(number)) {
+          newNotes.remove(number);
+        } else {
+          newNotes.add(number);
+          newNotes.sort();
+        }
+        newGrid[row][col] = cell.copyWith(notes: newNotes, value: 0);
+      } else {
+        // Mode normal
+        int newValue = cell.value == number ? 0 : number;
+        newGrid[row][col] = cell.copyWith(value: newValue, notes: []);
+
+        // Vérifier si c'est une erreur
+        if (newValue != 0 && newValue != cell.solution) {
+          int newErrors = _gameState.errors + 1;
+          _gameState = _gameState.copyWith(errors: newErrors);
+
+          if (newErrors >= 3) {
+            _gameOver(false);
+            return;
+          }
+        }
+      }
+
+      _gameState = _gameState.copyWith(grid: newGrid);
+
+      // Effacer le highlight si l'utilisateur a joué un chiffre non fixe
+      highlightedNumber = null;
+
+      // Vérifier si le jeu est terminé
+      if (_gameState.isComplete) {
+        _gameOver(true);
+      } else {
+        StorageService.saveGame(_gameState);
+      }
+    });
+  }
+
+  void _gameOver(bool won) {
+    _timer?.cancel();
+
+    if (won) {
+      int score = SudokuGenerator.calculateScore(
+        _gameState.difficulty,
+        _gameState.elapsedSeconds,
+      );
+      StorageService.saveBestScore(
+        _gameState.difficulty,
+        score,
+        _gameState.elapsedSeconds,
+      );
+      StorageService.clearSavedGame();
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ResultScreen(
+            difficulty: _gameState.difficulty,
+            time: _gameState.elapsedSeconds,
+            score: score,
+            won: true,
+          ),
+        ),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ResultScreen(
+            difficulty: _gameState.difficulty,
+            time: _gameState.elapsedSeconds,
+            score: 0,
+            won: false,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _eraseCell() {
+    if (_gameState.selectedRow == null || _gameState.selectedCol == null) return;
+
+    final row = _gameState.selectedRow!;
+    final col = _gameState.selectedCol!;
+    final cell = _gameState.grid[row][col];
+
+    if (cell.isFixed) return;
+
+    setState(() {
+      List<List<CellModel>> newGrid = _gameState.grid.map((r) =>
+          r.map((c) => c).toList()
+      ).toList();
+
+      newGrid[row][col] = cell.copyWith(value: 0, notes: []);
+      _gameState = _gameState.copyWith(grid: newGrid);
+      StorageService.saveGame(_gameState);
+    });
+  }
+
+  void _checkSolution() {
+    setState(() {
+      List<List<CellModel>> checkedGrid = SudokuSolver.checkGrid(_gameState.grid);
+      _gameState = _gameState.copyWith(grid: checkedGrid);
+    });
+
+    // Compter les erreurs trouvées
+    int errors = 0;
+    for (var row in _gameState.grid) {
+      for (var cell in row) {
+        if (cell.isError) errors++;
+      }
+    }
+
+    if (errors > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$errors erreur${errors > 1 ? 's' : ''} trouvée${errors > 1 ? 's' : ''}'),
+          backgroundColor: const Color(0xFFE53935),
+        ),
+      );
+    } else if (_gameState.isComplete) {
+      _gameOver(true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aucune erreur ! Continuez !'),
+          backgroundColor: Color(0xFF4CAF50),
+        ),
+      );
+    }
+  }
+
+  void _toggleNotesMode() {
+    setState(() {
+      _gameState = _gameState.copyWith(isNotesMode: !_gameState.isNotesMode);
+    });
+  }
+
+  String _formatTime(int seconds) {
+    int minutes = seconds ~/ 60;
+    int secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  String _getDifficultyText() {
+    switch (_gameState.difficulty) {
+      case Difficulty.facile:
+        return 'Facile';
+      case Difficulty.moyen:
+        return 'Moyen';
+      case Difficulty.difficile:
+        return 'Difficile';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            StorageService.saveGame(_gameState);
+            Navigator.pop(context);
+          },
+        ),
+        title: Text(
+          '${_gameState.grid.expand((row) => row).where((cell) => cell.value != 0).length}',
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF424242),
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {},
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Info bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildInfoItem('Difficulté', _getDifficultyText()),
+                _buildInfoItem('Erreurs', '${_gameState.errors}/3'),
+                _buildInfoItem('Temps', _formatTime(_gameState.elapsedSeconds)),
+              ],
+            ),
+          ),
+
+          // Grille Sudoku
+          Expanded(
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: _buildSudokuGrid(),
+                ),
+              ),
+            ),
+          ),
+
+          // Boutons d'action
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildActionButton(Icons.undo, 'Annuler', () {}),
+                _buildActionButton(Icons.backspace, 'Effacer', _eraseCell),
+                _buildActionButton(
+                  Icons.edit_note,
+                  'Notes',
+                  _toggleNotesMode,
+                  isActive: _gameState.isNotesMode,
+                ),
+                _buildActionButton(Icons.lightbulb, 'Indice', () {}),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Clavier numérique
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: List.generate(9, (index) {
+                int number = index + 1;
+                return _buildNumberButton(number);
+              }),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF9E9E9E),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF424242),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSudokuGrid() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFF424242), width: 2),
+      ),
+      child: Column(
+        children: List.generate(9, (row) {
+          return Expanded(
+            child: Row(
+              children: List.generate(9, (col) {
+                return Expanded(
+                  child: _buildCell(row, col),
+                );
+              }),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildCell(int row, int col) {
+    final cell = _gameState.grid[row][col];
+    final isSelected = _gameState.selectedRow == row && _gameState.selectedCol == col;
+    final isSameRow = _gameState.selectedRow == row;
+    final isSameCol = _gameState.selectedCol == col;
+    final isSameBlock = _gameState.selectedRow != null &&
+        _gameState.selectedCol != null &&
+        (row ~/ 3 == _gameState.selectedRow! ~/ 3) &&
+        (col ~/ 3 == _gameState.selectedCol! ~/ 3);
+
+    // Déterminer la couleur de fond
+    Color backgroundColor = Colors.white;
+
+    if (cell.isError) {
+      backgroundColor = const Color(0xFFFFCDD2); // rouge pour erreur
+    }
+    else if (isSelected) {
+      backgroundColor = const Color(0xFFBBDEFB); // bleu clair pour case sélectionnée
+    }
+    else if (isSameRow || isSameCol || isSameBlock) {
+      backgroundColor = const Color(0xFFE3F2FD); // bleu très clair pour ligne/col/bloc
+    }
+    else if (highlightedNumber != null &&
+        cell.value == highlightedNumber &&
+        cell.isFixed) {
+      backgroundColor = Colors.blue.shade800; // bleu foncé pour les mêmes numéros fixes
+    }
+
+    return GestureDetector(
+      onTap: () => _onCellTap(row, col),
+      child: Container(
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          border: Border(
+            right: BorderSide(
+              color: col % 3 == 2 ? const Color(0xFF424242) : const Color(0xFFBDBDBD),
+              width: col % 3 == 2 ? 2 : 0.5,
+            ),
+            bottom: BorderSide(
+              color: row % 3 == 2 ? const Color(0xFF424242) : const Color(0xFFBDBDBD),
+              width: row % 3 == 2 ? 2 : 0.5,
+            ),
+          ),
+        ),
+        child: Center(
+          child: cell.value != 0
+              ? Text(
+            '${cell.value}',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: cell.isFixed
+                  ? const Color(0xFF424242)
+                  : const Color(0xFF2979FF),
+            ),
+          )
+              : cell.notes.isNotEmpty
+              ? _buildNotesGrid(cell.notes)
+              : const SizedBox(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotesGrid(List<int> notes) {
+    return GridView.count(
+      crossAxisCount: 3,
+      padding: const EdgeInsets.all(2),
+      children: List.generate(9, (index) {
+        int num = index + 1;
+        return Center(
+          child: notes.contains(num)
+              ? Text(
+            '$num',
+            style: const TextStyle(
+              fontSize: 8,
+              color: Color(0xFF616161),
+            ),
+          )
+              : const SizedBox(),
+        );
+      }),
+    );
+  }
+
+  Widget _buildActionButton(IconData icon, String label, VoidCallback onPressed, {bool isActive = false}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          onPressed: onPressed,
+          icon: Icon(icon),
+          color: isActive ? const Color(0xFF2979FF) : const Color(0xFF9E9E9E),
+          iconSize: 28,
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: isActive ? const Color(0xFF2979FF) : const Color(0xFF9E9E9E),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNumberButton(int number) {
+    return InkWell(
+      onTap: () => _onNumberTap(number),
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF2979FF), width: 1),
+        ),
+        child: Center(
+          child: Text(
+            '$number',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2979FF),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+import 'package:flutter/material.dart';
+import '../models/game_state.dart';
+import '../services/sudoku_generator.dart';
+import '../services/storage_service.dart';
+import 'game_screen.dart';
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({Key? key}) : super(key: key);
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool _hasSavedGame = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSavedGame();
+  }
+
+  Future<void> _checkSavedGame() async {
+    final hasSaved = await StorageService.hasSavedGame();
+    if (!mounted) return;
+    setState(() {
+      _hasSavedGame = hasSaved;
+    });
+  }
+
+  void _showDifficultyDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Choisir la difficulté',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 24),
+              _buildDifficultyButton('Facile', Difficulty.facile, const Color(0xFF4CAF50)),
+              const SizedBox(height: 12),
+              _buildDifficultyButton('Moyen', Difficulty.moyen, const Color(0xFFFF9800)),
+              const SizedBox(height: 12),
+              _buildDifficultyButton('Difficile', Difficulty.difficile, const Color(0xFFE53935)),
+              const SizedBox(height: 16),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDifficultyButton(String label, Difficulty difficulty, Color color) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: () {
+          Navigator.pop(context);
+          _startNewGame(difficulty);
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+
+  void _startNewGame(Difficulty difficulty) {
+    final gameState = SudokuGenerator.generatePuzzle(difficulty);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => GameScreen(gameState: gameState)),
+    ).then((_) => _checkSavedGame());
+  }
+
+  Future<void> _resumeGame() async {
+    final gameState = await StorageService.loadGame();
+    if (gameState != null && mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => GameScreen(gameState: gameState)),
+      ).then((_) => _checkSavedGame());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF2979FF), Color(0xFF1565C0)],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                // LOGO
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Image.asset(
+                      'assets/images/logo.jpg',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Sudoku',
+                  style: TextStyle(
+                    fontSize: 48,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Entraînez votre esprit',
+                  style: TextStyle(fontSize: 16, color: Colors.white70),
+                ),
+                const SizedBox(height: 48),
+
+                // Défi quotidien
+                _dailyChallenge(),
+                const SizedBox(height: 32),
+
+                // BUTTON NEW GAME
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _showDifficultyDialog,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFF2979FF),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text(
+                      'Nouvelle partie',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+
+                if (_hasSavedGame) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: _resumeGame,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white, width: 2),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text(
+                        'Reprendre la partie',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 32),
+              ],
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        color: Colors.transparent,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _buildBottomButton(Icons.home, 'Accueil', true, () {}),
+            const SizedBox(width: 48),
+            _buildBottomButton(Icons.calendar_today, 'Défis', false, () {}),
+            const SizedBox(width: 48),
+            _buildBottomButton(Icons.person, 'Moi', false, () {}),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dailyChallenge() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFB300),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.stars_rounded, color: Colors.white, size: 32),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'DÉFI QUOTIDIEN',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF9E9E9E)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${DateTime.now().day} ${_getMonthName(DateTime.now().month)}',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () => _startNewGame(Difficulty.moyen),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2979FF),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            ),
+            child: const Text('Jouer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomButton(IconData icon, String label, bool isActive, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: isActive ? Colors.white : Colors.white60, size: 28),
+          const SizedBox(height: 4),
+          Text(label, style: TextStyle(color: isActive ? Colors.white : Colors.white60, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      '', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
+    ];
+    return months[month];
+  }
+}
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/user_provider.dart';
+import '../utils/constants.dart';
+
+class ProfileScreen extends StatelessWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final userProvider = Provider.of<UserProvider>(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Mon Profil"),
+      ),
+      body: userProvider.isLoggedIn
+          ? _buildProfileView(context, userProvider)
+          : _buildLoginView(context, userProvider),
+    );
+  }
+
+  // ============================
+  // 📌 VIEW : UTILISATEUR CONNECTÉ
+  // ============================
+  Widget _buildProfileView(BuildContext context, UserProvider userProvider) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Avatar remplacé par simple icône
+          Container(
+            width: 90,
+            height: 90,
+            decoration: BoxDecoration(
+              color: AppConstants.primaryColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.person,
+              size: 55,
+              color: AppConstants.primaryColor,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Text(
+            userProvider.username,
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          Text(
+            userProvider.country,
+            style: const TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Niveau du joueur
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppConstants.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.star, color: Colors.amber, size: 30),
+                const SizedBox(width: 8),
+                Text(
+                  "Niveau : ${userProvider.level}",
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 30),
+
+          // Bouton modifier profil
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppConstants.primaryColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+            ),
+            onPressed: () => _showEditDialog(context, userProvider),
+            icon: const Icon(Icons.edit),
+            label: const Text("Modifier"),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Déconnexion
+          TextButton(
+            onPressed: () => userProvider.logout(),
+            child: const Text(
+              "Se déconnecter",
+              style: TextStyle(color: Colors.red),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  // ============================
+  // 📌 VIEW : PAS CONNECTÉ
+  // ============================
+  Widget _buildLoginView(BuildContext context, UserProvider userProvider) {
+    final TextEditingController nameController = TextEditingController();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text(
+            "Créer un profil",
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+
+          const SizedBox(height: 20),
+
+          TextField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              labelText: "Nom d’utilisateur",
+              border: OutlineInputBorder(),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppConstants.primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              if (nameController.text.trim().isNotEmpty) {
+                userProvider.createProfile(nameController.text.trim());
+              }
+            },
+            child: const Text("Créer mon profil"),
+          )
+        ],
+      ),
+    );
+  }
+
+  // ============================
+  // 📌 DIALOG : Modifier profil
+  // ============================
+  void _showEditDialog(BuildContext context, UserProvider userProvider) {
+    final TextEditingController nameController =
+    TextEditingController(text: userProvider.username);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Modifier Profil"),
+          content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              labelText: "Nom d'utilisateur",
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Annuler"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                userProvider.updateProfile(nameController.text.trim());
+                Navigator.pop(context);
+              },
+              child: const Text("Enregistrer"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+// ============================================
+// screens/result_screen.dart
+// ============================================
+import 'package:flutter/material.dart';
+import '../models/game_state.dart';
+
+class ResultScreen extends StatelessWidget {
+  final Difficulty difficulty;
+  final int time;
+  final int score;
+  final bool won;
+
+  const ResultScreen({
+    Key? key,
+    required this.difficulty,
+    required this.time,
+    required this.score,
+    required this.won,
+  }) : super(key: key);
+
+  String _formatTime(int seconds) {
+    int minutes = seconds ~/ 60;
+    int secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  String _getDifficultyText() {
+    switch (difficulty) {
+      case Difficulty.facile:
+        return 'Facile';
+      case Difficulty.moyen:
+        return 'Moyen';
+      case Difficulty.difficile:
+        return 'Difficile';
+    }
+  }
+
+  Color _getDifficultyColor() {
+    switch (difficulty) {
+      case Difficulty.facile:
+        return const Color(0xFF4CAF50);
+      case Difficulty.moyen:
+        return const Color(0xFFFF9800);
+      case Difficulty.difficile:
+        return const Color(0xFFE53935);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: won
+                ? [const Color(0xFF00BCD4), const Color(0xFF0097A7)]
+                : [const Color(0xFFE53935), const Color(0xFFC62828)],
+          ),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Icône de résultat
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    won ? Icons.emoji_events : Icons.close,
+                    size: 64,
+                    color: won ? const Color(0xFFFFB300) : const Color(0xFFE53935),
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Titre
+                Text(
+                  won ? 'Félicitations !' : 'Partie terminée',
+                  style: const TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  won
+                      ? 'Vous avez réussi !'
+                      : 'Vous avez fait 3 erreurs',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.white70,
+                  ),
+                ),
+
+                const SizedBox(height: 48),
+
+                // Carte de résultats
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      if (won) ...[
+                        Text(
+                          'Nouveau meilleur score depuis le début',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.amber.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.emoji_events, color: Color(0xFFFFB300), size: 32),
+                            const SizedBox(width: 8),
+                            Text(
+                              score.toString(),
+                              style: const TextStyle(
+                                fontSize: 36,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF424242),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        const Divider(),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // Statistiques
+                      _buildStatRow(
+                        Icons.bar_chart,
+                        'Difficulté',
+                        _getDifficultyText(),
+                        _getDifficultyColor(),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildStatRow(
+                        Icons.timer,
+                        'Temps',
+                        _formatTime(time),
+                        const Color(0xFF1565C0),
+                      ),
+
+                      if (won) ...[
+                        const SizedBox(height: 24),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF9C4),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.star, color: Color(0xFFFFB300)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Vous avez établi un nouveau record de temps pour le niveau ${_getDifficultyText().toLowerCase()} : ${_formatTime(time)} !',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF424242),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 48),
+
+                // Boutons
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: won ? const Color(0xFF00BCD4) : const Color(0xFFE53935),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Nouvelle partie',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white, width: 2),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Accueil',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatRow(IconData icon, String label, String value, Color color) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 24),
+        const SizedBox(width: 12),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 16,
+            color: Color(0xFF757575),
+          ),
+        ),
+        const Spacer(),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+}
+// ============================================
+// screens/settings_screen.dart
+// ============================================
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/settings_provider.dart';
+import '../utils/constants.dart';
+
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Paramètres'),
+        centerTitle: true,
+      ),
+      body: Consumer<SettingsProvider>(
+        builder: (context, settings, child) {
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Section Gameplay
+              _buildSectionHeader('Gameplay'),
+              _buildSettingTile(
+                icon: Icons.error_outline,
+                title: 'Vérification automatique des erreurs',
+                subtitle: 'Marquer automatiquement les erreurs',
+                value: settings.autoCheckErrors,
+                onChanged: settings.setAutoCheckErrors,
+              ),
+              _buildSettingTile(
+                icon: Icons.highlight,
+                title: 'Surligner les numéros similaires',
+                subtitle: 'Mettre en évidence les mêmes chiffres',
+                value: settings.highlightSimilar,
+                onChanged: settings.setHighlightSimilar,
+              ),
+              _buildSettingTile(
+                icon: Icons.timer,
+                title: 'Afficher le chronomètre',
+                subtitle: 'Voir le temps écoulé pendant le jeu',
+                value: settings.showTimer,
+                onChanged: settings.setShowTimer,
+              ),
+
+              _buildSettingTile(
+                icon: Icons.dark_mode,
+                title: 'Mode sombre',
+                subtitle: 'Activer ou désactiver le mode sombre',
+                value: AppConstants.isDarkMode,
+                onChanged: (value) {
+                  AppConstants.isDarkMode = value;
+                  (context as Element).markNeedsBuild(); // rafraîchit l'écran
+                },
+              ),
+              const SizedBox(height: 24),
+
+              // Section Notifications
+              _buildSectionHeader('Notifications et Sons'),
+              _buildSettingTile(
+                icon: Icons.volume_up,
+                title: 'Sons',
+                subtitle: 'Activer les effets sonores',
+                value: settings.soundEnabled,
+                onChanged: settings.setSoundEnabled,
+              ),
+              _buildSettingTile(
+                icon: Icons.vibration,
+                title: 'Vibrations',
+                subtitle: 'Activer les vibrations',
+                value: settings.vibrateEnabled,
+                onChanged: settings.setVibrateEnabled,
+              ),
+
+              const SizedBox(height: 24),
+
+              // Section À propos
+              _buildSectionHeader('À propos'),
+              ListTile(
+                leading: const Icon(Icons.info_outline, color: AppConstants.primaryColor),
+                title: const Text('Version'),
+                subtitle: const Text('1.0.0'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.privacy_tip_outlined, color: AppConstants.primaryColor),
+                title: const Text('Politique de confidentialité'),
+                onTap: () {
+                  // Ouvrir la politique de confidentialité
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.description_outlined, color: AppConstants.primaryColor),
+                title: const Text('Conditions d\'utilisation'),
+                onTap: () {
+                  // Ouvrir les conditions d'utilisation
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, bottom: 8, top: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: AppConstants.primaryColor,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required Function(bool) onChanged,
+  }) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: SwitchListTile(
+        secondary: Icon(icon, color: AppConstants.primaryColor),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        value: value,
+        onChanged: onChanged,
+        activeColor: AppConstants.primaryColor,
+      ),
+    );
+  }
+}
+
+// ============================================
+// screens/statistics_screen.dart
+// ============================================
+import 'package:provider/provider.dart';
+import '../providers/game_provider.dart';
+import '../models/game_state.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/game_provider.dart';
+import '../models/game_state.dart';
+import '../utils/constants.dart';
+
+
+class StatisticsScreen extends StatelessWidget {
+  const StatisticsScreen({Key? key}) : super(key: key);
+
+  String _formatTime(int seconds) {
+    if (seconds == 0) return '--:--';
+    int minutes = seconds ~/ 60;
+    int secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Statistiques'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              _showResetDialog(context);
+            },
+          ),
+        ],
+      ),
+      body: Consumer<GameProvider>(
+        builder: (context, gameProvider, child) {
+          final stats = gameProvider.statistics;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Carte de résumé
+                Card(
+                  elevation: 4,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Résumé global',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildStatCard(
+                              'Parties jouées',
+                              stats.gamesPlayed.toString(),
+                              Icons.gamepad,
+                              AppConstants.primaryColor,
+                            ),
+                            _buildStatCard(
+                              'Victoires',
+                              stats.gamesWon.toString(),
+                              Icons.emoji_events,
+                              AppConstants.facileDifficultyColor,
+                            ),
+                            _buildStatCard(
+                              'Défaites',
+                              stats.gamesLost.toString(),
+                              Icons.close,
+                              AppConstants.errorColor,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildStatCard(
+                              'Taux de victoire',
+                              '${stats.winRate.toStringAsFixed(1)}%',
+                              Icons.trending_up,
+                              AppConstants.primaryColor,
+                            ),
+                            _buildStatCard(
+                              'Temps moyen',
+                              _formatTime(stats.averageTime),
+                              Icons.timer,
+                              AppConstants.moyenDifficultyColor,
+                            ),
+                            _buildStatCard(
+                              'Série actuelle',
+                              stats.currentStreak.toString(),
+                              Icons.local_fire_department,
+                              AppConstants.errorColor,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Meilleurs temps par difficulté
+                const Text(
+                  'Meilleurs temps',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildBestTimeCard(
+                  'Facile',
+                  _formatTime(stats.bestTimeFacile),
+                  stats.bestScoreFacile,
+                  AppConstants.facileDifficultyColor,
+                ),
+                const SizedBox(height: 8),
+                _buildBestTimeCard(
+                  'Moyen',
+                  _formatTime(stats.bestTimeMoyen),
+                  stats.bestScoreMoyen,
+                  AppConstants.moyenDifficultyColor,
+                ),
+                const SizedBox(height: 8),
+                _buildBestTimeCard(
+                  'Difficile',
+                  _formatTime(stats.bestTimeDifficile),
+                  stats.bestScoreDifficile,
+                  AppConstants.difficileDifficultyColor,
+                ),
+
+                const SizedBox(height: 24),
+
+                // Achievements
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Succès',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildAchievementTile(
+                          'Première victoire',
+                          stats.gamesWon >= 1,
+                          'Gagner votre première partie',
+                        ),
+                        _buildAchievementTile(
+                          'Série de 5',
+                          stats.bestStreak >= 5,
+                          'Gagner 5 parties d\'affilée',
+                        ),
+                        _buildAchievementTile(
+                          'Expert',
+                          stats.gamesWon >= 50,
+                          'Gagner 50 parties',
+                        ),
+                        _buildAchievementTile(
+                          'Maître',
+                          stats.gamesWon >= 100,
+                          'Gagner 100 parties',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 32),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.grey,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBestTimeCard(String difficulty, String time, int score, Color color) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: color,
+          child: const Icon(Icons.timer, color: Colors.white),
+        ),
+        title: Text(difficulty),
+        subtitle: Text('Score: $score'),
+        trailing: Text(
+          time,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAchievementTile(String title, bool achieved, String description) {
+    return ListTile(
+      leading: Icon(
+        achieved ? Icons.check_circle : Icons.circle_outlined,
+        color: achieved ? AppConstants.facileDifficultyColor : Colors.grey,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontWeight: achieved ? FontWeight.bold : FontWeight.normal,
+          color: achieved ? Colors.black : Colors.grey,
+        ),
+      ),
+      subtitle: Text(description),
+    );
+  }
+
+  void _showResetDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Réinitialiser les statistiques'),
+        content: const Text(
+          'Êtes-vous sûr de vouloir réinitialiser toutes vos statistiques ? Cette action est irréversible.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () {
+              Provider.of<GameProvider>(context, listen: false).resetStatistics();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Statistiques réinitialisées')),
+              );
+            },
+            child: const Text(
+              'Réinitialiser',
+              style: TextStyle(color: AppConstants.errorColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+4) services : 
+// ============================================
+// services/storage_service.dart
+// ============================================
+
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/game_state.dart';
+import '../models/statistics.dart';
+import '../utils/constants.dart';
+
+class StorageService {
+  static const String _savedGameKey = 'saved_game';
+  static const String _bestScoresKey = 'best_scores';
+  static const String _statisticsKey = 'statistics';
+  static const String _settingsKey = 'settings';
+
+  // =========================================================
+  // 1) PARTIE
+  // =========================================================
+  static Future<void> saveGame(GameState gameState) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = jsonEncode(gameState.toJson());
+    await prefs.setString(_savedGameKey, jsonString);
+  }
+
+  static Future<GameState?> loadGame() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_savedGameKey);
+
+    if (jsonString == null) return null;
+
+    try {
+      final json = jsonDecode(jsonString);
+      return GameState.fromJson(json);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> clearSavedGame() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_savedGameKey);
+  }
+
+  static Future<bool> hasSavedGame() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.containsKey(_savedGameKey);
+  }
+
+  // =========================================================
+  // 2) STATISTIQUES
+  // =========================================================
+  static Future<void> saveStatistics(Statistics stats) async {
+    final prefs = await SharedPreferences.getInstance();
+    final json = jsonEncode(stats.toJson());
+    await prefs.setString(_statisticsKey, json);
+  }
+
+  static Future<Statistics?> loadStatistics() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_statisticsKey);
+
+    if (jsonString == null) return null;
+
+    try {
+      final json = jsonDecode(jsonString);
+      return Statistics.fromJson(json);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // =========================================================
+  // 3) PARAMÈTRES (Settings)
+  // =========================================================
+  static Future<Map<String, dynamic>?> loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (!prefs.containsKey('autoCheckErrors')) return null;
+
+    return {
+      'autoCheckErrors': prefs.getBool('autoCheckErrors') ?? true,
+      'highlightSimilar': prefs.getBool('highlightSimilar') ?? true,
+      'showTimer': prefs.getBool('showTimer') ?? true,
+      'soundEnabled': prefs.getBool('soundEnabled') ?? false,
+      'vibrateEnabled': prefs.getBool('vibrateEnabled') ?? true,
+    };
+  }
+
+  static Future<void> saveSettings(Map<String, dynamic> settings) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setBool('autoCheckErrors', settings['autoCheckErrors']);
+    await prefs.setBool('highlightSimilar', settings['highlightSimilar']);
+    await prefs.setBool('showTimer', settings['showTimer']);
+    await prefs.setBool('soundEnabled', settings['soundEnabled']);
+    await prefs.setBool('vibrateEnabled', settings['vibrateEnabled']);
+  }
+
+  // =========================================================
+  // 4) MEILLEURS SCORES
+  // =========================================================
+  static Future<void> saveBestScore(
+      Difficulty difficulty, int score, int time) async {
+    final prefs = await SharedPreferences.getInstance();
+    final scoresJson = prefs.getString(_bestScoresKey);
+
+    Map<String, dynamic> scores = {};
+
+    if (scoresJson != null) {
+      try {
+        scores = jsonDecode(scoresJson);
+      } catch (_) {
+        scores = {};
+      }
+    }
+
+    final key = difficulty.toString();
+
+    if (!scores.containsKey(key) || scores[key]['score'] < score) {
+      scores[key] = {
+        'score': score,
+        'time': time,
+      };
+      await prefs.setString(_bestScoresKey, jsonEncode(scores));
+    }
+  }
+
+  static Future<Map<String, int>?> getBestScore(Difficulty difficulty) async {
+    final prefs = await SharedPreferences.getInstance();
+    final scoresJson = prefs.getString(_bestScoresKey);
+
+    if (scoresJson == null) return null;
+
+    try {
+      final scores = jsonDecode(scoresJson);
+      final key = difficulty.toString();
+
+      if (scores.containsKey(key)) {
+        return {
+          'score': scores[key]['score'],
+          'time': scores[key]['time'],
+        };
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
+  // =========================================================
+  // 5) PROFIL UTILISATEUR
+  // =========================================================
+
+  static Future<void> saveUserProfile(Map<String, dynamic> data) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setString('username', data['username'] ?? '');
+    await prefs.setString('avatar', data['avatar'] ?? '😀');
+    await prefs.setString('country', data['country'] ?? 'Maroc');
+    await prefs.setInt('level', data['level'] ?? 0);
+    await prefs.setBool('isLoggedIn', data['isLoggedIn'] ?? false);
+
+    if (data['createdAt'] != null) {
+      await prefs.setString('createdAt', data['createdAt']);
+    }
+  }
+
+  static Future<Map<String, dynamic>?> loadUserProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (!prefs.containsKey('username')) return null;
+
+    return {
+      'username': prefs.getString('username'),
+      'avatar': prefs.getString('avatar'),
+      'country': prefs.getString('country'),
+      'level': prefs.getInt('level'),
+      'isLoggedIn': prefs.getBool('isLoggedIn'),
+      'createdAt': prefs.getString('createdAt'),
+    };
+  }
+
+  static Future<void> clearUserProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove('username');
+    await prefs.remove('avatar');
+    await prefs.remove('country');
+    await prefs.remove('level');
+    await prefs.remove('isLoggedIn');
+    await prefs.remove('createdAt');
+  }
+}
+// ============================================
+// services/sudoku_generator.dart
+// ============================================
+import 'dart:math';
+import '../models/cell_model.dart';
+import '../models/game_state.dart';
+
+class SudokuGenerator {
+  static final Random _random = Random();
+
+  // Génère une nouvelle grille Sudoku
+  static GameState generatePuzzle(Difficulty difficulty) {
+    // Créer une grille solution complète
+    List<List<int>> solution = _generateCompleteSolution();
+
+    // Créer une copie pour le puzzle
+    List<List<int>> puzzle = List.generate(
+      9,
+          (i) => List.generate(9, (j) => solution[i][j]),
+    );
+
+    // Retirer des cellules selon la difficulté
+    int cellsToRemove = _getCellsToRemove(difficulty);
+    _removeCells(puzzle, cellsToRemove);
+
+    // Créer la grille de CellModel
+    List<List<CellModel>> grid = List.generate(
+      9,
+          (row) => List.generate(
+        9,
+            (col) => CellModel(
+          row: row,
+          col: col,
+          value: puzzle[row][col],
+          solution: solution[row][col],
+          isFixed: puzzle[row][col] != 0,
+        ),
+      ),
+    );
+
+    return GameState(grid: grid, difficulty: difficulty);
+  }
+
+  // Génère une solution complète valide
+  static List<List<int>> _generateCompleteSolution() {
+    List<List<int>> grid = List.generate(9, (_) => List.filled(9, 0));
+    _fillGrid(grid);
+    return grid;
+  }
+
+  // Remplit la grille récursivement
+  static bool _fillGrid(List<List<int>> grid) {
+    for (int row = 0; row < 9; row++) {
+      for (int col = 0; col < 9; col++) {
+        if (grid[row][col] == 0) {
+          List<int> numbers = List.generate(9, (i) => i + 1)..shuffle(_random);
+
+          for (int num in numbers) {
+            if (_isValidPlacement(grid, row, col, num)) {
+              grid[row][col] = num;
+
+              if (_fillGrid(grid)) {
+                return true;
+              }
+
+              grid[row][col] = 0;
+            }
+          }
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // Vérifie si un placement est valide
+  static bool _isValidPlacement(List<List<int>> grid, int row, int col, int num) {
+    // Vérifier la ligne
+    for (int x = 0; x < 9; x++) {
+      if (grid[row][x] == num) return false;
+    }
+
+    // Vérifier la colonne
+    for (int x = 0; x < 9; x++) {
+      if (grid[x][col] == num) return false;
+    }
+
+    // Vérifier le bloc 3x3
+    int startRow = row - row % 3;
+    int startCol = col - col % 3;
+    for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+        if (grid[i + startRow][j + startCol] == num) return false;
+      }
+    }
+
+    return true;
+  }
+
+  // Détermine combien de cellules retirer selon la difficulté
+  static int _getCellsToRemove(Difficulty difficulty) {
+    switch (difficulty) {
+      case Difficulty.facile:
+        return 35 + _random.nextInt(5); // 35-40 cellules retirées
+      case Difficulty.moyen:
+        return 45 + _random.nextInt(5); // 45-50 cellules retirées
+      case Difficulty.difficile:
+        return 52 + _random.nextInt(5); // 52-57 cellules retirées
+    }
+  }
+
+  // Retire des cellules de la grille
+  static void _removeCells(List<List<int>> grid, int count) {
+    int removed = 0;
+    while (removed < count) {
+      int row = _random.nextInt(9);
+      int col = _random.nextInt(9);
+
+      if (grid[row][col] != 0) {
+        grid[row][col] = 0;
+        removed++;
+      }
+    }
+  }
+
+  // Calcule le score basé sur difficulté et temps
+  static int calculateScore(Difficulty difficulty, int seconds) {
+    int baseScore = 0;
+    switch (difficulty) {
+      case Difficulty.facile:
+        baseScore = 1000;
+        break;
+      case Difficulty.moyen:
+        baseScore = 2500;
+        break;
+      case Difficulty.difficile:
+        baseScore = 5000;
+        break;
+    }
+
+    // Bonus de temps (plus rapide = plus de points)
+    int timeBonus = (3600 - seconds).clamp(0, 3000);
+    return baseScore + timeBonus;
+  }
+}
+// ============================================
+// services/sudoku_solver.dart
+// Solver uniquement !
+// ============================================
+
+import '../models/cell_model.dart';
+
+class SudokuSolver {
+  // Vérifie si un nombre peut être placé dans une cellule
+  static bool isValid(List<List<int>> board, int row, int col, int num) {
+    // Vérifier la ligne
+    for (int x = 0; x < 9; x++) {
+      if (board[row][x] == num) {
+        return false;
+      }
+    }
+
+    // Vérifier la colonne
+    for (int x = 0; x < 9; x++) {
+      if (board[x][col] == num) {
+        return false;
+      }
+    }
+
+    // Vérifier le carré 3×3
+    int startRow = row - row % 3;
+    int startCol = col - col % 3;
+
+    for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+        if (board[startRow + i][startCol + j] == num) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+  static List<List<CellModel>> checkGrid(List<List<CellModel>> grid) {
+    List<List<CellModel>> newGrid = grid.map(
+            (row) => row.map((c) => c.copyWith(isError: false)).toList()
+    ).toList();
+
+    for (int r = 0; r < 9; r++) {
+      for (int c = 0; c < 9; c++) {
+        final cell = newGrid[r][c];
+        if (cell.value != 0 && cell.value != cell.solution) {
+          newGrid[r][c] = cell.copyWith(isError: true);
+        }
+      }
+    }
+    return newGrid;
+  }
+
+
+  // Résolution du Sudoku par backtracking
+  static bool solve(List<List<int>> board) {
+    for (int row = 0; row < 9; row++) {
+      for (int col = 0; col < 9; col++) {
+        if (board[row][col] == 0) {
+          for (int num = 1; num <= 9; num++) {
+            if (isValid(board, row, col, num)) {
+              board[row][col] = num;
+
+              if (solve(board)) {
+                return true;
+              }
+
+              board[row][col] = 0;
+            }
+          }
+          return false; // Aucun chiffre ne convient
+        }
+      }
+    }
+    return true; // Sudoku résolu
+  }
+}
+5) utils : 
+// utils/constants.dart
+import 'package:flutter/material.dart';
+
+class AppConstants {
+  // Mode sombre ou clair
+  static bool isDarkMode = false;
+
+  // Couleurs dynamiques
+  static Color get backgroundColor => isDarkMode ? Colors.black : Colors.white;
+  static Color get selectedCellColor =>
+      isDarkMode ? Colors.blueGrey : Colors.blue.withOpacity(0.3);
+  static Color get highlightCellColor =>
+      isDarkMode ? Colors.grey[800]! : Colors.lightBlue.withOpacity(0.25);
+  static Color get errorCellColor => Colors.red.withOpacity(0.4);
+  static Color get fixedCellColor => isDarkMode ? Colors.white70 : Colors.black;
+  static Color get editableCellColor => isDarkMode ? Colors.white : Colors.black;
+  static Color get noteColor => isDarkMode ? Colors.white54 : Colors.black54;
+
+  // Couleurs statiques
+  static const Color primaryColor = Color(0xFF2979FF);
+  static const Color errorColor = Color(0xFFE53935);
+  static const Color timerColor = Color(0xFF1565C0);
+  static const Color borderColor = Colors.grey;
+  static const Color thickBorderColor = Colors.black;
+
+  // Couleurs de difficulté
+  static const Color facileDifficultyColor = Color(0xFF4CAF50);
+  static const Color moyenDifficultyColor = Color(0xFFFF9800);
+  static const Color difficileDifficultyColor = Color(0xFFE53935);
+
+  // Dimensions
+  static const double gridBorderWidth = 2.0;
+  static const double cellBorderWidth = 0.5;
+  static const double blockBorderWidth = 2.0;
+  static const double cellPadding = 4.0;
+
+  // Tailles de police
+  static const double cellValueFontSize = 24.0;
+  static const double noteFontSize = 8.0;
+  static const double headerFontSize = 20.0;
+  static const double titleFontSize = 48.0;
+
+  // Limites de jeu
+  static const int maxErrors = 3;
+  static const int gridSize = 9;
+  static const int blockSize = 3;
+
+  // Cellules à retirer selon difficulté
+  static const int facileMinCells = 35;
+  static const int facileMaxCells = 40;
+  static const int moyenMinCells = 45;
+  static const int moyenMaxCells = 50;
+  static const int difficileMinCells = 52;
+  static const int difficileMaxCells = 57;
+
+  // Scores de base
+  static const int facileBaseScore = 1000;
+  static const int moyenBaseScore = 2500;
+  static const int difficileBaseScore = 5000;
+  static const int maxTimeBonus = 3000;
+
+  // Clés de stockage
+  static const String savedGameKey = 'saved_game';
+  static const String statisticsKey = 'statistics';
+  static const String settingsKey = 'settings';
+  static const String bestScoresKey = 'best_scores';
+
+  // Durées d'animation
+  static const Duration animationDuration = Duration(milliseconds: 200);
+  static const Duration timerDuration = Duration(seconds: 1);
+
+  // Messages
+  static const String noErrorsMessage = 'Aucune erreur ! Continuez !';
+  static const String errorsFoundMessage = 'erreur(s) trouvée(s)';
+  static const String gameWonTitle = 'Félicitations !';
+  static const String gameWonMessage = 'Vous avez réussi !';
+  static const String gameLostTitle = 'Partie terminée';
+  static const String gameLostMessage = 'Vous avez fait 3 erreurs';
+
+  // Paramètres par défaut
+  static const bool defaultAutoCheckErrors = true;
+  static const bool defaultHighlightSimilar = true;
+  static const bool defaultShowTimer = true;
+  static const bool defaultSoundEnabled = false;
+  static const bool defaultVibrateEnabled = true;
+}
+
+class AppStrings {
+  static const String appTitle = 'Sudoku';
+  static const String newGame = 'Nouvelle partie';
+  static const String resumeGame = 'Reprendre la partie';
+  static const String difficulty = 'Difficulté';
+  static const String facile = 'Facile';
+  static const String moyen = 'Moyen';
+  static const String difficile = 'Difficile';
+  static const String errors = 'Erreurs';
+  static const String time = 'Temps';
+  static const String cancel = 'Annuler';
+  static const String undo = 'Annuler';
+  static const String erase = 'Effacer';
+  static const String notes = 'Notes';
+  static const String hint = 'Indice';
+  static const String check = 'Vérifier';
+  static const String settings = 'Paramètres';
+  static const String statistics = 'Statistiques';
+  static const String home = 'Accueil';
+  static const String dailyChallenges = 'Défis quotidiens';
+  static const String profile = 'Moi';
+  static const String dailyChallenge = 'DÉFI QUOTIDIEN';
+  static const String play = 'Jouer';
+  static const String chooseDifficulty = 'Choisir la difficulté';
+  static const String start = 'Commencer';
+  static const String congratulations = 'Félicitations !';
+  static const String youWon = 'Vous avez réussi !';
+  static const String gameOver = 'Partie terminée';
+  static const String threeErrors = 'Vous avez fait 3 erreurs';
+  static const String score = 'Score';
+  static const String newBestScore = 'Nouveau meilleur score depuis le début';
+  static const String newRecord = 'Vous avez établi un nouveau record de temps';
+}
+6) widgets : 
+
+// ============================================
+// widgets/game_toolbar.dart
+// ============================================
+import 'package:flutter/material.dart';
+import '../utils/constants.dart'; // li fih AppConstants
+
+class GameToolbar extends StatelessWidget {
+  final VoidCallback? onUndo;
+  final VoidCallback onErase;
+  final VoidCallback onNotes;
+  final VoidCallback? onHint;
+  final bool canUndo;
+  final bool isNotesMode;
+
+  const GameToolbar({
+    Key? key,
+    this.onUndo,
+    required this.onErase,
+    required this.onNotes,
+    this.onHint,
+    this.canUndo = false,
+    this.isNotesMode = false,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildToolButton(
+          icon: Icons.undo,
+          label: 'Annuler',
+          onPressed: canUndo ? onUndo : null,
+          isActive: false,
+        ),
+        _buildToolButton(
+          icon: Icons.backspace,
+          label: 'Effacer',
+          onPressed: onErase,
+          isActive: false,
+        ),
+        _buildToolButton(
+          icon: Icons.edit_note,
+          label: 'Notes',
+          onPressed: onNotes,
+          isActive: isNotesMode,
+        ),
+        _buildToolButton(
+          icon: Icons.lightbulb,
+          label: 'Indice',
+          onPressed: onHint,
+          isActive: false,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildToolButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+    required bool isActive,
+  }) {
+    final color = onPressed == null
+        ? Colors.grey.shade400
+        : isActive
+        ? AppConstants.primaryColor
+        : Colors.grey.shade600;
+
+    return InkWell(
+      onTap: onPressed,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isActive ? AppConstants.primaryColor.withOpacity(0.1) : null,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================
+// widgets/number_pad.dart
+// ============================================
+import 'package:flutter/material.dart';
+import '../utils/constants.dart'; // li fih AppConstants
+import '../models/cell_model.dart';
+
+
+class NumberPad extends StatelessWidget {
+  final Function(int) onNumberTap;
+  final List<List<CellModel>> grid;
+  final bool showRemaining;
+
+  const NumberPad({
+    Key? key,
+    required this.onNumberTap,
+    required this.grid,
+    this.showRemaining = true,
+  }) : super(key: key);
+
+  int _countNumber(int number) {
+    int count = 0;
+    for (var row in grid) {
+      for (var cell in row) {
+        if (cell.value == number) count++;
+      }
+    }
+    return 9 - count;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: List.generate(9, (index) {
+        int number = index + 1;
+        int remaining = _countNumber(number);
+        bool isComplete = remaining == 0;
+
+        return InkWell(
+          onTap: isComplete ? null : () => onNumberTap(number),
+          child: Container(
+            width: 36,
+            height: 50,
+            decoration: BoxDecoration(
+              color: isComplete ? Colors.grey.shade300 : Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isComplete
+                    ? Colors.grey.shade400
+                    : AppConstants.primaryColor,
+                width: 1,
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  '$number',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isComplete
+                        ? Colors.grey.shade500
+                        : AppConstants.primaryColor,
+                  ),
+                ),
+                if (showRemaining && !isComplete)
+                  Text(
+                    '$remaining',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
+// ============================================
+// widgets/sudoku_grid.dart
+// ============================================
+
+import 'package:flutter/material.dart';
+import '../models/cell_model.dart';
+import '../utils/constants.dart';
+
+class SudokuGrid extends StatelessWidget {
+  final List<List<CellModel>> grid;
+  final int? selectedRow;
+  final int? selectedCol;
+  final Function(int, int) onCellTap;
+  final bool highlightSimilar;
+
+  const SudokuGrid({
+    Key? key,
+    required this.grid,
+    required this.selectedRow,
+    required this.selectedCol,
+    required this.onCellTap,
+    this.highlightSimilar = true,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 1,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: AppConstants.thickBorderColor,
+            width: AppConstants.gridBorderWidth,
+          ),
+        ),
+        child: Column(
+          children: List.generate(9, (row) {
+            return Expanded(
+              child: Row(
+                children: List.generate(9, (col) {
+                  return Expanded(
+                    child: _buildCell(row, col),
+                  );
+                }),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCell(int row, int col) {
+    final cell = grid[row][col];
+
+    final isSelected = selectedRow == row && selectedCol == col;
+    final isSameRow = selectedRow == row;
+    final isSameCol = selectedCol == col;
+
+    final isSameBlock = selectedRow != null &&
+        selectedCol != null &&
+        row ~/ 3 == selectedRow! ~/ 3 &&
+        col ~/ 3 == selectedCol! ~/ 3;
+
+    final isSameValue = highlightSimilar &&
+        cell.value != 0 &&
+        selectedRow != null &&
+        selectedCol != null &&
+        !isSelected &&
+        grid[selectedRow!][selectedCol!].value == cell.value;
+
+    Color bg = AppConstants.backgroundColor;
+
+    // PRIORITÉ 1 : ERREUR
+    if (cell.isError) {
+      bg = AppConstants.errorCellColor;
+    }
+    // PRIORITÉ 2 : CASE SÉLECTIONNÉE
+    else if (isSelected) {
+      bg = AppConstants.selectedCellColor;
+    }
+    // PRIORITÉ 3 : MÊME CHIFFRE
+    else if (isSameValue) {
+      bg = const Color(0xFF1B89CD);
+    }
+    // PRIORITÉ 4 : MÊME LIGNE / COLONNE / BLOC
+    else if (isSameRow || isSameCol || isSameBlock) {
+      bg = AppConstants.highlightCellColor;
+    }
+
+    return GestureDetector(
+      onTap: () => onCellTap(row, col),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bg,
+          border: Border(
+            right: BorderSide(
+              color: col % 3 == 2
+                  ? AppConstants.thickBorderColor
+                  : AppConstants.borderColor,
+              width: col % 3 == 2
+                  ? AppConstants.blockBorderWidth
+                  : AppConstants.cellBorderWidth,
+            ),
+            bottom: BorderSide(
+              color: row % 3 == 2
+                  ? AppConstants.thickBorderColor
+                  : AppConstants.borderColor,
+              width: row % 3 == 2
+                  ? AppConstants.blockBorderWidth
+                  : AppConstants.cellBorderWidth,
+            ),
+          ),
+        ),
+        child: Center(
+          child: cell.value != 0
+              ? Text(
+            "${cell.value}",
+            style: TextStyle(
+              fontSize: AppConstants.cellValueFontSize,
+              fontWeight: FontWeight.bold,
+              color: cell.isFixed
+                  ? AppConstants.fixedCellColor
+                  : AppConstants.editableCellColor,
+            ),
+          )
+              : cell.notes.isNotEmpty
+              ? _buildNotesGrid(cell.notes)
+              : const SizedBox(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotesGrid(List<int> notes) {
+    return GridView.count(
+      crossAxisCount: 3,
+      padding: const EdgeInsets.all(2),
+      physics: const NeverScrollableScrollPhysics(),
+      children: List.generate(9, (i) {
+        final num = i + 1;
+        return Center(
+          child: notes.contains(num)
+              ? Text(
+            "$num",
+            style: TextStyle(
+              fontSize: AppConstants.noteFontSize,
+              color: AppConstants.noteColor,
+            ),
+          )
+              : const SizedBox(),
+        );
+      }),
+    );
+  }
+}
+7) main.dart : import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'providers/game_provider.dart';
+import 'providers/settings_provider.dart';
+import 'providers/user_provider.dart';          // ⬅️ AJOUT IMPORTANT
+import 'screens/home_screen.dart';
+import 'utils/constants.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+  runApp(const SudokuApp());
+}
+
+class SudokuApp extends StatelessWidget {
+  const SudokuApp({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => GameProvider()),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(create: (_) => UserProvider()),    // ⬅️ AJOUTÉ
+      ],
+      child: MaterialApp(
+        title: AppStrings.appTitle,
+        debugShowCheckedModeBanner: false,
+
+        theme: ThemeData(
+          useMaterial3: true,
+          primaryColor: AppConstants.primaryColor,
+          scaffoldBackgroundColor: AppConstants.backgroundColor,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: AppConstants.primaryColor,
+            primary: AppConstants.primaryColor,
+            error: AppConstants.errorColor,
+          ),
+          appBarTheme: AppBarTheme(
+            backgroundColor: AppConstants.backgroundColor,
+            elevation: 0,
+            iconTheme: const IconThemeData(color: AppConstants.primaryColor),
+            titleTextStyle:  TextStyle(
+              color: AppConstants.fixedCellColor,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        home: const HomeScreen(),
+      ),
+    );
+  }
+}
+8) pubspec.lock
+
+donc je veux corriger le probleme de couleur lorsque on tape un numéro faux le numero reste de coleur bleu il faut devient rauge et le 2 eme  probleme si la taille les composants de l'ecran de reussi de partie c'est tu continuer votre partie donc il un erreur de taille le reste de ecran n'affiche pas et la 3 eme probleme si lorsque on clique sur un numero fixe je veux que tout les memes numeros par exemple 5 fixe tous selectionnes et la case de ces numeros  devient bleu  et la 4 eme probleme c'est la constrution de eran moi qui contient les informations de l'utilisateur et les statistiques de jeux c'est a dire comme le sudoku de play store et aussi l'ecran de defi qui contient calendrier des jeux et des mois et lorsque on continuer la partie de ce jour on met une etroite par exemple sur ce jour comme l'image qui au dessous 
